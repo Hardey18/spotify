@@ -2,16 +2,40 @@ import React, { useEffect, useState } from 'react'
 import { Container, Form } from 'react-bootstrap'
 import SpotifyWebApi from 'spotify-web-api-node'
 
+import TrackSearchResult from './TrackSearchResult'
+import Player from './Player'
+
 const spotifyApi = new SpotifyWebApi({
     clientId: "cd33156ab19747a19a1c1fa226084937"
 })
 
 import useAuth from '../useAuth'
+import axios from 'axios'
 
 function Dashboard({ code }) {
     const accessToken = useAuth(code)
     const [search, setSearch] = useState("")
     const [searchResults, setSearchResults] = useState([])
+    const [playingTrack, setPlayingTrack] = useState()
+    const [lyrics, setLyrics] = useState("")
+
+    function chooseTrack(track) {
+        setplayingTrack(track)
+        setSearch("")
+        setlyrics("")
+    }
+
+    useEffect(() => {
+        if(!playingTrack) return
+        axios.get('http://localhost:3001/lyrics', {
+            params: {
+                track: playingTrack.title,
+                artist: playingTrack.artist
+            }
+        }).then(res => {
+            setLyrics(res.data.lyrics)
+        })
+    }, [playingTrack])
 
     useEffect(() => {
         if(!accessToken) return
@@ -22,11 +46,14 @@ function Dashboard({ code }) {
         if(!search) return setSearchResults([])
         if(!accessToken) return
 
+        let cancel = false
         spotifyApi.searchTracks(search).then(res => {
+            if(cancel) return
             setSearchResults(res.body.tracks.items.map(track => {
+                console.log("Track", track);
                 const smallestAlbumImage = track.album.images.reduce((smallest, image) => {
                     if (image.height < smallest.height) return image
-                    return smallesr
+                    return smallest
                 }, track.album.images[0])
                 return {
                     artist: track.artists[0].name,
@@ -36,6 +63,7 @@ function Dashboard({ code }) {
                 }
             }))
         })
+        return () => cancel = true
     }, [search, accessToken])
 
     return (
@@ -47,9 +75,20 @@ function Dashboard({ code }) {
                 onChange={e => setSearch(e.target.value)}
             />
             <div className="flex-grow-1 my-2" style={{ overflowY: "auto" }}>
-                Songs
+                {searchResults.map(track => (
+                    <TrackSearchResult 
+                        track={track} 
+                        key={track.uri} 
+                        chooseTrack={chooseTrack}
+                    />
+                ))}
+                {searchResults.length === 0 && (
+                    <div className="text-center" style={{ whiteSpace: 'pre' }}>
+                        {lyrics}
+                    </div>
+                )}
             </div>
-            <div>Bottom</div>
+            <div><Player accessToken={accessToken} trackUri={playingTrack?.uri} /></div>
         </Container>
     )
 }
